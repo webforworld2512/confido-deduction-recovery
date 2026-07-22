@@ -18,8 +18,10 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS retailers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    canonical_name TEXT UNIQUE NOT NULL
+    id INTEGER PRIMARY KEY,
+    canonical_name TEXT UNIQUE NOT NULL,
+    type TEXT,
+    region TEXT
   );
 
   CREATE TABLE IF NOT EXISTS dispute_reasons (

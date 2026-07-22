@@ -45,6 +45,8 @@ router.get('/api/dashboard', (req, res) => {
   const byRetailer = db.prepare(`
     SELECT
       r.canonical_name AS retailer,
+      r.type AS retailer_type,
+      r.region AS retailer_region,
       COUNT(*) AS count,
       COALESCE(SUM(d.amount_cents), 0) AS amount,
       COALESCE(SUM(CASE WHEN dis.id IS NOT NULL THEN d.amount_cents ELSE 0 END), 0) AS disputed,

@@ -55,22 +55,31 @@ for (const r of reasons) {
 }
 console.log(`Dispute reasons seeded: ${reasons.length + 1}`);
 
-// ── Retailer upsert cache ──
+// ── Seed retailers ──
 
-const upsertRetailer = db.prepare(`
-  INSERT INTO retailers (canonical_name) VALUES (?)
-  ON CONFLICT(canonical_name) DO UPDATE SET canonical_name = canonical_name
-  RETURNING id
+const retailers = loadJson('retailers.json');
+const insertRetailer = db.prepare(`
+  INSERT OR REPLACE INTO retailers (id, canonical_name, type, region)
+  VALUES (?, ?, ?, ?)
 `);
 
 const retailerCache = new Map<string, number>();
 
+// Unknown retailer for unmapped names
+insertRetailer.run(0, 'Unknown', null, null);
+retailerCache.set('Unknown', 0);
+
+for (const r of retailers) {
+  insertRetailer.run(r.id, r.name, r.type, r.region);
+  retailerCache.set(r.name, r.id);
+}
+console.log(`Retailers seeded: ${retailers.length + 1}`);
+
 function getRetailerId(canonicalName: string): number {
-  const cached = retailerCache.get(canonicalName);
-  if (cached) return cached;
-  const row = upsertRetailer.get(canonicalName) as { id: number };
-  retailerCache.set(canonicalName, row.id);
-  return row.id;
+  const id = retailerCache.get(canonicalName);
+  if (id !== undefined) return id;
+  // Shouldn't happen if normalizeRetailer covers all variants, but fall back to Unknown
+  return retailerCache.get('Unknown')!;
 }
 
 // ── Seed deductions ──

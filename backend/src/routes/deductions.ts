@@ -56,6 +56,8 @@ router.get('/api/deductions', (req, res) => {
       d.*,
       c.name AS company_name,
       r.canonical_name AS retailer_name,
+      r.type AS retailer_type,
+      r.region AS retailer_region,
       dr.label AS reason_label,
       dr.category AS reason_category,
       dr.typically_disputable,
@@ -85,6 +87,8 @@ router.get('/api/deductions/:id', (req, res) => {
       c.erp_system,
       c.default_currency,
       r.canonical_name AS retailer_name,
+      r.type AS retailer_type,
+      r.region AS retailer_region,
       dr.label AS reason_label,
       dr.category AS reason_category,
       dr.typically_disputable
