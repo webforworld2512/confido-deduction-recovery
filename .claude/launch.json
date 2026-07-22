@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "./frontend/node_modules/.bin/vite",
+      "runtimeArgs": ["--port", "5173", "frontend"],
+      "port": 5173
+    }
+  ]
+}
