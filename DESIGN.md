@@ -55,6 +55,14 @@ Normalizing at seed time means every query works with clean data without per-req
 
 **Why:** The `original_status` field is raw reference data from the source system — messy, inconsistent values like "COMPLETE", "Dispute - Filing in progress", "dispute", "Open". Normalizing it would make it look like another actionable status alongside Dispute, which defeats the purpose. The Dispute column is the single source of truth for where a deduction stands in our workflow. The raw status is preserved on the detail page as informational context, clearly labeled as source data.
 
+## Visual Design System (Calm Financial Palette)
+
+**Chose:** A single warm, muted color system applied through CSS variables and a centralized `lib/status.ts` helper. Warm off-white background (#FAFAF8), white cards with a soft #E8E6E0 border, slate-blue primary accent (#5B7B9C), charcoal body text (#2D2D2A), and a fixed set of desaturated status colors (lavender/amber/sage/ochre/terracotta) registered as Tailwind theme colors (`status-new`, `status-active`, `status-accepted`, `status-partial`, `status-rejected`) so the same hue appears everywhere a given status is shown — badges, dashboard stat cards, chart marks, and the dispute timeline. Dollar amounts use `tabular-nums` so columns align.
+
+**Considered:** Keeping the default shadcn monochrome theme; using per-component saturated Tailwind palette classes (blue-100/purple-100/etc.) as the code originally did.
+
+**Why:** This is a tool analysts stare at for hours, so the goal is low-fatigue calm and instant scannability, not visual punch. Saturated per-component colors made each surface pick its own blues and purples, so the app didn't read as one system and status meaning wasn't consistent (amber meant different things in different places). Centralizing the palette in CSS variables + one status helper means a status has exactly one color across the entire app, and the muted tones keep large data tables restful. The Dispute History was also restructured from a flat "Attempt 1 / Attempt 2" list into a connected vertical timeline — colored dots on a rail, each attempt in a card tinted with its own status color, and a distinct sage "Fully recovered" banner — so an analyst can read the arc of a multi-attempt dispute at a glance. This was a visual/color pass only; no layout, data, or interaction changed.
+
 ---
 
 ## Considered but Deferred

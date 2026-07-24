@@ -5,7 +5,7 @@ const router = Router();
 
 router.get('/api/deductions', (req, res) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
+  const limit = Math.min(10000, Math.max(1, parseInt(req.query.limit as string) || 50));
   const offset = (page - 1) * limit;
 
   const sortBy = req.query.sort_by === 'amount' ? 'd.amount_cents' : 'd.deducted_at';

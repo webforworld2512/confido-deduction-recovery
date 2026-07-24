@@ -2,11 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Plus } from 'lucide-react';
 import { apiFetch, formatCents, formatDate, formatTimestamp } from '#lib/api';
+import { statusStyle, statusBadge, statusLabel } from '#lib/status';
+import { toastSuccess, toastError } from '#lib/toast';
 import { Button } from '#components/ui/button';
 import { Badge } from '#components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '#components/ui/card';
 import { Input } from '#components/ui/input';
 import { Separator } from '#components/ui/separator';
+import { Skeleton } from '#components/ui/skeleton';
 import { Textarea } from '#components/ui/textarea';
 import {
   Dialog,
@@ -71,26 +74,14 @@ const TRANSITION_CONFIG: Record<TransitionKind, { title: string; description: st
   rejected: { title: 'Reject Dispute', description: 'The retailer rejected this dispute.' },
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  new: 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300',
-  in_review: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
-  submitted: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
-  accepted: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
-  partial: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-  rejected: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-};
-
 const TERMINAL = new Set(['accepted', 'partial', 'rejected']);
-
-function statusLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 export default function DeductionDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState<DeductionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -106,7 +97,11 @@ export default function DeductionDetailPage() {
   const refetch = useCallback(() => {
     apiFetch<DeductionDetail>(`/api/deductions/${id}`)
       .then(setData)
-      .catch((e) => setError(e.message));
+      .catch((e) => {
+        setError(e.message);
+        toastError(`Failed to load deduction: ${e.message}`);
+      })
+      .finally(() => setLoading(false));
   }, [id]);
 
   useEffect(() => {
@@ -132,7 +127,12 @@ export default function DeductionDetailPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notes }),
     })
-      .then(() => { setCreateDialogOpen(false); refetch(); })
+      .then(() => {
+        setCreateDialogOpen(false);
+        toastSuccess('Dispute created');
+        refetch();
+      })
+      .catch((e) => toastError(`Failed to create dispute: ${e.message}`))
       .finally(() => setCreating(false));
   }
 
@@ -165,6 +165,7 @@ export default function DeductionDetailPage() {
       const dollars = parseFloat(dialogAmount);
       if (isNaN(dollars) || dollars <= 0) {
         setSubmitting(false);
+        toastError('Enter a valid recovery amount');
         return;
       }
       body.amount_recovered_cents = Math.round(dollars * 100);
@@ -177,8 +178,11 @@ export default function DeductionDetailPage() {
     })
       .then(() => {
         setDialogOpen(false);
+        const label = statusLabel(transitionKind);
+        toastSuccess(`Dispute moved to ${label}`);
         refetch();
       })
+      .catch((e) => toastError(`Transition failed: ${e.message}`))
       .finally(() => setSubmitting(false));
   }
 
@@ -188,16 +192,48 @@ export default function DeductionDetailPage() {
         <Button variant="ghost" size="sm" onClick={() => navigate('/deductions')}>
           <ArrowLeft className="size-4" /> Back
         </Button>
-        <p className="text-destructive">{error}</p>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertTriangle className="mb-3 size-6 text-status-rejected" />
+            <p className="text-sm text-muted-foreground">{error}</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => { setError(null); setLoading(true); refetch(); }}>
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  if (!data) {
+  if (loading || !data) {
     return (
-      <div className="space-y-4">
-        <div className="h-8 w-48 animate-pulse rounded bg-muted" />
-        <div className="h-64 animate-pulse rounded bg-muted" />
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-9 w-20" />
+          <Skeleton className="h-8 w-48" />
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader><Skeleton className="h-5 w-16" /></CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i}>
+                    <Skeleton className="mb-1 h-3 w-20" />
+                    <Skeleton className="h-5 w-28" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><Skeleton className="h-5 w-32" /></CardHeader>
+            <CardContent className="space-y-4">
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-32 w-full" />
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -219,7 +255,7 @@ export default function DeductionDetailPage() {
         {data.has_data_issues === 1 && (
           <span
             title={data.data_issue_notes ?? ''}
-            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+            className="inline-flex items-center gap-1 rounded-full bg-status-active/15 px-2.5 py-0.5 text-xs font-medium text-status-active-fg"
           >
             <AlertTriangle className="size-3" /> Data issues
           </span>
@@ -250,11 +286,11 @@ export default function DeductionDetailPage() {
               </div>
               <div>
                 <dt className="text-muted-foreground">Amount</dt>
-                <dd className="font-mono text-lg font-semibold">{formatCents(data.amount_cents)}</dd>
+                <dd className="font-mono tabular-nums text-lg font-semibold">{formatCents(data.amount_cents)}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Remaining</dt>
-                <dd className={`font-mono text-lg font-semibold ${fullyRecovered ? 'text-emerald-600' : ''}`}>
+                <dd className={`font-mono tabular-nums text-lg font-semibold ${fullyRecovered ? 'text-status-accepted-fg' : ''}`}>
                   {formatCents(remaining)}
                   <span className="ml-1 text-xs font-normal text-muted-foreground">
                     of {formatCents(data.amount_cents)}
@@ -274,7 +310,7 @@ export default function DeductionDetailPage() {
                 <dd>
                   <Badge variant="secondary">{data.reason_label}</Badge>
                   {data.typically_disputable === 1 && (
-                    <span className="ml-2 text-xs text-green-600 dark:text-green-400">Typically disputable</span>
+                    <span className="ml-2 text-xs text-slate-accent-fg">Typically disputable</span>
                   )}
                 </dd>
               </div>
@@ -292,9 +328,9 @@ export default function DeductionDetailPage() {
             {data.data_issue_notes && (
               <>
                 <Separator className="my-4" />
-                <div className="rounded-md bg-amber-50 p-3 text-sm dark:bg-amber-950/20">
-                  <span className="font-medium text-amber-800 dark:text-amber-200">Data issues: </span>
-                  <span className="text-amber-700 dark:text-amber-300">{data.data_issue_notes}</span>
+                <div className="rounded-md bg-status-active/8 p-3 text-sm">
+                  <span className="font-medium text-status-active-fg">Data issues: </span>
+                  <span className="text-status-active-fg/85">{data.data_issue_notes}</span>
                 </div>
               </>
             )}
@@ -313,47 +349,52 @@ export default function DeductionDetailPage() {
           </CardHeader>
           <CardContent>
             {fullyRecovered && data.disputes.length > 0 && (
-              <div className="mb-4 rounded-md bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300">
-                <CheckCircle2 className="mr-1.5 inline size-4" />
-                Fully recovered
+              <div className="mb-5 flex items-center gap-2 rounded-lg border border-status-accepted/35 bg-status-accepted/12 p-3 text-sm font-medium text-status-accepted-fg">
+                <CheckCircle2 className="size-4 shrink-0" />
+                <span>
+                  Fully recovered — <span className="font-mono tabular-nums">{formatCents(data.amount_cents)}</span> back in full
+                </span>
               </div>
             )}
 
             {data.disputes.length > 0 ? (
-              <div className="space-y-4">
+              <div className="relative space-y-4 before:absolute before:top-2 before:bottom-2 before:left-[6px] before:w-px before:bg-border before:content-['']">
                 {data.disputes.map((dispute, i) => {
                   const isTerminal = TERMINAL.has(dispute.status);
+                  const st = statusStyle(dispute.status);
                   return (
-                    <div key={dispute.id}>
-                      {i > 0 && <Separator className="mb-4" />}
-                      <div className="space-y-3">
+                    <div key={dispute.id} className="relative flex gap-3">
+                      <span
+                        className={`relative z-10 mt-1.5 size-3 shrink-0 rounded-full ring-4 ring-card ${st.dot}`}
+                      />
+                      <div className={`min-w-0 flex-1 rounded-lg border p-3 ${st.tint}`}>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground font-medium">
+                          <span className="text-xs font-medium text-muted-foreground">
                             Attempt {data.disputes.length - i}
                           </span>
                           <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                              STATUS_COLORS[dispute.status] ?? ''
-                            }`}
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadge(
+                              dispute.status
+                            )}`}
                           >
                             {statusLabel(dispute.status)}
                           </span>
                           {isTerminal && dispute.status === 'accepted' && (
-                            <CheckCircle2 className="size-4 text-emerald-600" />
+                            <CheckCircle2 className="size-4 text-status-accepted" />
                           )}
                           {isTerminal && dispute.status === 'rejected' && (
-                            <XCircle className="size-4 text-red-500" />
+                            <XCircle className="size-4 text-status-rejected" />
                           )}
                         </div>
 
-                        <dl className="space-y-2 text-sm">
+                        <dl className="mt-3 space-y-2 text-sm">
                           <div className="flex justify-between">
                             <dt className="text-muted-foreground">Disputed</dt>
-                            <dd className="font-mono font-medium">{formatCents(dispute.amount_disputed_cents)}</dd>
+                            <dd className="font-mono tabular-nums font-medium">{formatCents(dispute.amount_disputed_cents)}</dd>
                           </div>
                           <div className="flex justify-between">
                             <dt className="text-muted-foreground">Recovered</dt>
-                            <dd className="font-mono font-medium">{formatCents(dispute.amount_recovered_cents)}</dd>
+                            <dd className="font-mono tabular-nums font-medium">{formatCents(dispute.amount_recovered_cents)}</dd>
                           </div>
                           <div className="flex justify-between">
                             <dt className="text-muted-foreground">Created</dt>
@@ -368,21 +409,25 @@ export default function DeductionDetailPage() {
                         </dl>
 
                         {isTerminal && (
-                          <div className={`rounded-md p-2.5 text-xs ${
+                          <div className={`mt-3 flex items-start gap-1.5 text-xs font-medium ${
                             dispute.status === 'accepted'
-                              ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300'
+                              ? 'text-status-accepted-fg'
                               : dispute.status === 'partial'
-                                ? 'bg-orange-50 text-orange-800 dark:bg-orange-950/20 dark:text-orange-300'
-                                : 'bg-red-50 text-red-800 dark:bg-red-950/20 dark:text-red-300'
+                                ? 'text-status-partial-fg'
+                                : 'text-status-rejected-fg'
                           }`}>
-                            {dispute.status === 'accepted' && `Fully recovered ${formatCents(dispute.amount_recovered_cents)}`}
-                            {dispute.status === 'partial' && `Partially recovered ${formatCents(dispute.amount_recovered_cents)} of ${formatCents(dispute.amount_disputed_cents)}`}
-                            {dispute.status === 'rejected' && 'Rejected by retailer'}
+                            {dispute.status === 'accepted' && (
+                              <span>Fully recovered <span className="font-mono tabular-nums">{formatCents(dispute.amount_recovered_cents)}</span></span>
+                            )}
+                            {dispute.status === 'partial' && (
+                              <span>Partially recovered <span className="font-mono tabular-nums">{formatCents(dispute.amount_recovered_cents)}</span> of <span className="font-mono tabular-nums">{formatCents(dispute.amount_disputed_cents)}</span></span>
+                            )}
+                            {dispute.status === 'rejected' && <span>Rejected by retailer</span>}
                           </div>
                         )}
 
                         {!isTerminal && (
-                          <div className="flex flex-wrap gap-2 pt-1">
+                          <div className="flex flex-wrap gap-2 pt-3">
                             {dispute.status === 'new' && (
                               <Button size="sm" onClick={() => openTransition(dispute.id, 'in_review', dispute)}>
                                 Move to In Review
@@ -397,7 +442,7 @@ export default function DeductionDetailPage() {
                               <>
                                 <Button
                                   size="sm"
-                                  className="bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700"
+                                  className="bg-status-accepted text-white hover:bg-status-accepted/85"
                                   onClick={() => openTransition(dispute.id, 'accepted', dispute)}
                                 >
                                   Accept
@@ -422,7 +467,7 @@ export default function DeductionDetailPage() {
                         )}
 
                         {dispute.activity_log.length > 0 && (
-                          <div className="space-y-1.5 pt-1">
+                          <div className="mt-3 space-y-1.5 border-t border-border/60 pt-3">
                             <h4 className="text-xs font-medium text-muted-foreground">Activity</h4>
                             {dispute.activity_log.map((a) => (
                               <div key={a.id} className="flex items-start gap-2 text-xs">
@@ -447,7 +492,7 @@ export default function DeductionDetailPage() {
               <div className="space-y-3 text-center">
                 <p className="text-sm text-muted-foreground">No dispute filed yet.</p>
                 {data.typically_disputable === 1 && (
-                  <p className="text-xs text-green-600 dark:text-green-400">
+                  <p className="text-xs text-slate-accent-fg">
                     This deduction is typically disputable.
                   </p>
                 )}
@@ -506,7 +551,7 @@ export default function DeductionDetailPage() {
                 disabled={submitting || (transitionKind === 'partial' && (!dialogAmount || parseFloat(dialogAmount) <= 0))}
                 className={
                   transitionKind === 'accepted'
-                    ? 'bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700'
+                    ? 'bg-status-accepted text-white hover:bg-status-accepted/85'
                     : ''
                 }
                 variant={transitionKind === 'rejected' ? 'destructive' : 'default'}

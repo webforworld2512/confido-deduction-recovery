@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Receipt } from 'lucide-react';
+import { LayoutDashboard, Receipt, ShieldCheck } from 'lucide-react';
 import { useCompany } from '#lib/CompanyContext';
 import {
   Select,
@@ -12,6 +12,7 @@ import {
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/deductions', label: 'Deductions', icon: Receipt },
+  { to: '/data-quality', label: 'Data Quality', icon: ShieldCheck },
 ];
 
 export default function Layout() {
@@ -20,8 +21,11 @@ export default function Layout() {
   return (
     <div className="flex h-screen flex-col">
       {/* Top navbar */}
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background px-6">
-        <span className="text-lg font-semibold tracking-tight">Confido</span>
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-6">
+        <span className="text-lg font-semibold tracking-tight text-slate-accent">
+          Confido
+          <span className="ml-0.5 text-slate-accent/40">.</span>
+        </span>
         <Select
           value={selectedCompanyId?.toString() ?? 'all'}
           onValueChange={(v: string) => setSelectedCompanyId(v === 'all' ? null : Number(v))}
@@ -52,8 +56,8 @@ export default function Layout() {
               className={({ isActive }) =>
                 `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+                    ? 'bg-slate-accent/12 text-slate-accent-fg'
+                    : 'text-sidebar-foreground/65 hover:bg-slate-accent/6 hover:text-sidebar-foreground'
                 }`
               }
             >

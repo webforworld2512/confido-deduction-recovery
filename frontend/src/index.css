@@ -20,6 +20,18 @@
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', sans-serif;
+  --color-slate-accent: var(--slate-accent);
+  --color-slate-accent-fg: var(--slate-accent-fg);
+  --color-status-new: var(--status-new);
+  --color-status-new-fg: var(--status-new-fg);
+  --color-status-active: var(--status-active);
+  --color-status-active-fg: var(--status-active-fg);
+  --color-status-accepted: var(--status-accepted);
+  --color-status-accepted-fg: var(--status-accepted-fg);
+  --color-status-partial: var(--status-partial);
+  --color-status-partial-fg: var(--status-partial-fg);
+  --color-status-rejected: var(--status-rejected);
+  --color-status-rejected-fg: var(--status-rejected-fg);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -61,38 +73,56 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #fafaf8;
+  --foreground: #2d2d2a;
+  --card: #ffffff;
+  --card-foreground: #2d2d2a;
+  --popover: #ffffff;
+  --popover-foreground: #2d2d2a;
+  --primary: #5b7b9c;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f1ec;
+  --secondary-foreground: #2d2d2a;
+  --muted: #f2f1ec;
+  --muted-foreground: #78766e;
+  --accent: #eef1f5;
+  --accent-foreground: #3d5975;
+  --destructive: #c97b63;
+  --border: #e8e6e0;
+  --input: #e8e6e0;
+  --ring: #5b7b9c;
+
+  /* Brand accent (slate blue) */
+  --slate-accent: #5b7b9c;
+  --slate-accent-fg: #3d5975;
+
+  /* Status palette — muted, consistent everywhere a status appears */
+  --status-new: #9b8aa6;        /* dusty lavender */
+  --status-new-fg: #5f5169;
+  --status-active: #d9a05b;     /* warm amber — in review / submitted */
+  --status-active-fg: #8a5f26;
+  --status-accepted: #7a9b76;   /* sage green — accepted / recovered */
+  --status-accepted-fg: #46603f;
+  --status-partial: #c9a15c;    /* soft ochre */
+  --status-partial-fg: #856726;
+  --status-rejected: #c97b63;   /* dusty terracotta */
+  --status-rejected-fg: #8f4632;
+
+  /* Charts */
+  --chart-1: #5b7b9c;
+  --chart-2: #7a9b76;
+  --chart-3: #d9a05b;
+  --chart-4: #9b8aa6;
+  --chart-5: #c97b63;
+  --radius: 0.75rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #2d2d2a;
+  --sidebar-primary: #5b7b9c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eef1f5;
+  --sidebar-accent-foreground: #3d5975;
+  --sidebar-border: #e8e6e0;
+  --sidebar-ring: #5b7b9c;
 }
 
 .dark {

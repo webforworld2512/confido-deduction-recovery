@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Download, Search, X } from 'lucide-react';
 import { useCompany } from '#lib/CompanyContext';
 import { apiFetch, formatCents, formatDate } from '#lib/api';
-import { Badge } from '#components/ui/badge';
+import { reasonBadge, statusBadge, statusLabel } from '#lib/status';
+import { toastSuccess, toastError } from '#lib/toast';
 import { Button } from '#components/ui/button';
 import { Input } from '#components/ui/input';
+import { Skeleton } from '#components/ui/skeleton';
 import { Switch } from '#components/ui/switch';
 import {
   Select,
@@ -62,28 +64,6 @@ interface UndisputedDisputable {
   amount: number;
 }
 
-const REASON_CATEGORY_COLORS: Record<string, string> = {
-  Pricing: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  Logistics: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
-  Compliance: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
-  Promotional: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  Financial: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300',
-  Other: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300',
-};
-
-const DISPUTE_STATUS_COLORS: Record<string, string> = {
-  new: 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300',
-  in_review: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
-  submitted: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
-  accepted: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
-  partial: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-  rejected: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-};
-
-function statusLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export default function DeductionList() {
   const navigate = useNavigate();
   const { selectedCompanyId } = useCompany();
@@ -92,6 +72,7 @@ export default function DeductionList() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const limit = 25;
 
   const [retailerId, setRetailerId] = useState<string>('all');
@@ -124,14 +105,10 @@ export default function DeductionList() {
     });
   }, [selectedCompanyId]);
 
-  const fetchDeductions = useCallback(() => {
-    setLoading(true);
+  function buildFilterParams() {
     const params = new URLSearchParams();
-    params.set('page', String(page));
-    params.set('limit', String(limit));
     params.set('sort_by', sortBy);
     params.set('sort_order', sortOrder);
-
     if (selectedCompanyId != null) params.set('company_id', String(selectedCompanyId));
     if (retailerId !== 'all') params.set('retailer_id', retailerId);
     if (reasonCode !== 'all') params.set('reason_code', reasonCode);
@@ -139,12 +116,21 @@ export default function DeductionList() {
     if (disputeFilter === 'undisputed') params.set('has_dispute', 'false');
     if (disputableOnly) params.set('typically_disputable', 'true');
     if (search.trim()) params.set('search', search.trim());
+    return params;
+  }
+
+  const fetchDeductions = useCallback(() => {
+    setLoading(true);
+    const params = buildFilterParams();
+    params.set('page', String(page));
+    params.set('limit', String(limit));
 
     apiFetch<{ data: Deduction[]; total: number }>(`/api/deductions?${params}`)
       .then((res) => {
         setData(res.data);
         setTotal(res.total);
       })
+      .catch(() => toastError('Failed to load deductions'))
       .finally(() => setLoading(false));
   }, [page, sortBy, sortOrder, selectedCompanyId, retailerId, reasonCode, disputeFilter, disputableOnly, search]);
 
@@ -157,6 +143,16 @@ export default function DeductionList() {
   }, [selectedCompanyId, retailerId, reasonCode, disputeFilter, disputableOnly, search]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  const hasActiveFilters = search !== '' || retailerId !== 'all' || reasonCode !== 'all' || disputeFilter !== 'all' || disputableOnly;
+
+  function resetFilters() {
+    setSearch('');
+    setRetailerId('all');
+    setReasonCode('all');
+    setDisputeFilter('all');
+    setDisputableOnly(false);
+  }
 
   function handleSort(col: 'date' | 'amount') {
     if (sortBy === col) {
@@ -172,22 +168,84 @@ export default function DeductionList() {
     return sortOrder === 'asc' ? ' ↑' : ' ↓';
   }
 
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const params = buildFilterParams();
+      params.set('page', '1');
+      params.set('limit', '10000');
+      const res = await apiFetch<{ data: Deduction[] }>(`/api/deductions?${params}`);
+
+      const headers = [
+        'ID', 'Date', 'Invoice #', 'Company', 'Retailer', 'Retailer Type', 'Retailer Region',
+        'Reason', 'Reason Category', 'Amount', 'Dispute Status', 'Disputable',
+        'Has Data Issues', 'Data Issue Notes',
+      ];
+
+      const rows = res.data.map((d) => [
+        d.id,
+        d.deducted_at ?? '',
+        d.invoice_number ?? '',
+        d.company_name,
+        d.retailer_name,
+        d.retailer_type ?? '',
+        d.retailer_region ?? '',
+        d.reason_label,
+        d.reason_category,
+        d.amount_cents != null ? (d.amount_cents / 100).toFixed(2) : '',
+        d.dispute_status ? statusLabel(d.dispute_status) : '',
+        d.typically_disputable ? 'Yes' : 'No',
+        d.has_data_issues ? 'Yes' : 'No',
+        d.data_issue_notes ?? '',
+      ]);
+
+      const csvContent = [headers, ...rows]
+        .map((row) => row.map((cell) => {
+          const str = String(cell);
+          return str.includes(',') || str.includes('"') || str.includes('\n')
+            ? `"${str.replace(/"/g, '""')}"`
+            : str;
+        }).join(','))
+        .join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `deductions-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      toastSuccess(`Exported ${res.data.length} deductions`);
+    } catch {
+      toastError('Failed to export CSV');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Deductions</h1>
-        <span className="text-sm text-muted-foreground">{total.toLocaleString()} total</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">{total.toLocaleString()} total</span>
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting || total === 0}>
+            <Download className="mr-1 size-3.5" />
+            {exporting ? 'Exporting...' : 'Export CSV'}
+          </Button>
+        </div>
       </div>
 
       {undisputed && undisputed.count > 0 && !disputableOnly && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
-          <AlertTriangle className="size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+        <div className="flex items-center gap-3 rounded-lg border border-status-active/30 bg-status-active/8 px-4 py-3">
+          <AlertTriangle className="size-5 shrink-0 text-status-active" />
           <div className="text-sm">
-            <span className="font-medium text-amber-800 dark:text-amber-200">
+            <span className="font-medium text-status-active-fg">
               {undisputed.count} disputable deductions
             </span>{' '}
-            <span className="text-amber-700 dark:text-amber-300">
-              totaling {formatCents(undisputed.amount)} have not been disputed yet.
+            <span className="text-status-active-fg/85">
+              totaling <span className="tabular-nums">{formatCents(undisputed.amount)}</span> have not been disputed yet.
             </span>
           </div>
           <Button
@@ -277,18 +335,12 @@ export default function DeductionList() {
           </label>
         </div>
 
-        {(search !== '' || retailerId !== 'all' || reasonCode !== 'all' || disputeFilter !== 'all' || disputableOnly) && (
+        {hasActiveFilters && (
           <Button
             variant="ghost"
             size="sm"
             className="text-muted-foreground"
-            onClick={() => {
-              setSearch('');
-              setRetailerId('all');
-              setReasonCode('all');
-              setDisputeFilter('all');
-              setDisputableOnly(false);
-            }}
+            onClick={resetFilters}
           >
             <X className="mr-1 size-3" />
             Reset filters
@@ -323,17 +375,32 @@ export default function DeductionList() {
             {loading ? (
               Array.from({ length: 10 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 7 }).map((_, j) => (
-                    <TableCell key={j}>
-                      <div className="h-4 w-full animate-pulse rounded bg-muted" />
-                    </TableCell>
-                  ))}
+                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell><Skeleton className="ml-auto h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                 </TableRow>
               ))
             ) : data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                  No deductions found.
+                <TableCell colSpan={7} className="h-32 text-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <Search className="size-5 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      {hasActiveFilters
+                        ? 'No deductions match these filters.'
+                        : 'No deductions found.'}
+                    </p>
+                    {hasActiveFilters && (
+                      <Button variant="ghost" size="sm" onClick={resetFilters}>
+                        <X className="mr-1 size-3" />
+                        Reset filters
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
@@ -350,29 +417,29 @@ export default function DeductionList() {
                   <TableCell>{d.retailer_name}</TableCell>
                   <TableCell>
                     <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        REASON_CATEGORY_COLORS[d.reason_category] ?? REASON_CATEGORY_COLORS['Other']
-                      }`}
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${reasonBadge(
+                        d.reason_category
+                      )}`}
                     >
                       {d.reason_label}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right font-mono whitespace-nowrap">
+                  <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
                     {formatCents(d.amount_cents)}
                   </TableCell>
                   <TableCell>
                     {d.dispute_status ? (
                       <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                          DISPUTE_STATUS_COLORS[d.dispute_status] ?? ''
-                        }`}
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge(
+                          d.dispute_status
+                        )}`}
                       >
                         {statusLabel(d.dispute_status)}
                       </span>
                     ) : d.typically_disputable ? (
-                      <Badge variant="outline" className="text-xs text-muted-foreground">
+                      <span className="inline-flex items-center rounded-full border border-slate-accent/40 px-2 py-0.5 text-xs font-medium text-slate-accent-fg">
                         Disputable
-                      </Badge>
+                      </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
