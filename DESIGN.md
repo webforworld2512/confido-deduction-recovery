@@ -62,3 +62,9 @@ Normalizing at seed time means every query works with clean data without per-req
 ### CSV Import with Session-Based Data Isolation
 
 A natural next step would be letting analysts upload new deduction CSVs directly rather than seeding from a static JSON file. This would require a generic column-mapping UI (letting users match arbitrary CSV headers to our schema fields), type inference for amounts/dates, and session-based data isolation so one upload doesn't corrupt another. Deferred because the current hand-tuned normalizer in `normalize.ts` handles the known data formats well, and building a generic import pipeline is a significantly larger effort that wasn't justified given the time constraints. The normalize/seed approach works for the current single-dataset use case.
+
+### Editing Deduction Fields (e.g. invoice_number)
+
+Field completeness analysis showed ~8% of records have no usable invoice_number (various null-like values: "n/a", "", "-", "None"). This is a real-world gap — analysts may later receive the correct invoice number from a retailer's remittance detail — but we chose not to build editing for this assessment.
+
+Reasoning: editable fields on financial records require an audit trail (who/when/old value/new value) to be responsible, following the same pattern as dispute_activity_log. Without that, edits would silently destroy the provenance of the original imported data — worse than leaving the field read-only. The dispute workflow itself doesn't block on invoice_number being present, so this isn't an urgent gap. A production version would add field-level edit history alongside the existing dispute activity log.
