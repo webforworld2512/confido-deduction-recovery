@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { useCompany } from '#lib/CompanyContext';
 import { apiFetch, formatCents, formatDate } from '#lib/api';
 import { Badge } from '#components/ui/badge';
@@ -179,7 +179,7 @@ export default function DeductionList() {
         <span className="text-sm text-muted-foreground">{total.toLocaleString()} total</span>
       </div>
 
-      {undisputed && undisputed.count > 0 && (
+      {undisputed && undisputed.count > 0 && !disputableOnly && (
         <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
           <AlertTriangle className="size-5 shrink-0 text-amber-600 dark:text-amber-400" />
           <div className="text-sm">
@@ -276,6 +276,24 @@ export default function DeductionList() {
             Disputable only
           </label>
         </div>
+
+        {(search !== '' || retailerId !== 'all' || reasonCode !== 'all' || disputeFilter !== 'all' || disputableOnly) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            onClick={() => {
+              setSearch('');
+              setRetailerId('all');
+              setReasonCode('all');
+              setDisputeFilter('all');
+              setDisputableOnly(false);
+            }}
+          >
+            <X className="mr-1 size-3" />
+            Reset filters
+          </Button>
+        )}
       </div>
 
       <div className="rounded-lg border">

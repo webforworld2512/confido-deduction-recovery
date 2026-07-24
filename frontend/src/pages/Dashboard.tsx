@@ -131,18 +131,18 @@ export default function Dashboard() {
           <CardContent>
             <div className="space-y-2">
               {data.by_reason.map((r) => (
-                <div key={r.code} className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2">
-                    {r.reason}
+                <div key={r.code} className="flex items-center justify-between gap-4 text-sm">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="truncate">{r.reason}</span>
                     {r.typically_disputable === 1 && (
-                      <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                      <span className="shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                         Disputable
                       </span>
                     )}
                   </span>
-                  <span className="flex items-center gap-3">
+                  <span className="flex shrink-0 items-center gap-3">
                     <span className="text-muted-foreground">{r.count}</span>
-                    <span className="w-24 text-right font-mono">{formatCents(r.amount)}</span>
+                    <span className="text-right font-mono whitespace-nowrap">{formatCents(r.amount)}</span>
                   </span>
                 </div>
               ))}
