@@ -1,11 +1,39 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle } from 'lucide-react';
-import { apiFetch, formatCents, formatDate } from '#lib/api';
+import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Plus } from 'lucide-react';
+import { apiFetch, formatCents, formatDate, formatTimestamp } from '#lib/api';
 import { Button } from '#components/ui/button';
 import { Badge } from '#components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '#components/ui/card';
+import { Input } from '#components/ui/input';
 import { Separator } from '#components/ui/separator';
+import { Textarea } from '#components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#components/ui/dialog';
+
+interface Dispute {
+  id: number;
+  status: string;
+  amount_disputed_cents: number;
+  amount_recovered_cents: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  activity_log: {
+    id: number;
+    from_status: string | null;
+    to_status: string;
+    note: string | null;
+    created_at: string;
+  }[];
+}
 
 interface DeductionDetail {
   id: number;
@@ -14,6 +42,7 @@ interface DeductionDetail {
   reason_code: string;
   invoice_number: string | null;
   amount_cents: number | null;
+  amount_remaining_cents: number | null;
   deducted_at: string | null;
   original_status: string | null;
   original_retailer_name: string | null;
@@ -29,24 +58,18 @@ interface DeductionDetail {
   reason_label: string;
   reason_category: string;
   typically_disputable: number;
-  dispute: {
-    id: number;
-    status: string;
-    amount_disputed_cents: number;
-    amount_recovered_cents: number;
-    notes: string | null;
-    created_at: string;
-    updated_at: string;
-    resolved_at: string | null;
-  } | null;
-  activity_log: {
-    id: number;
-    from_status: string | null;
-    to_status: string;
-    note: string | null;
-    created_at: string;
-  }[];
+  disputes: Dispute[];
 }
+
+type TransitionKind = 'in_review' | 'submitted' | 'accepted' | 'partial' | 'rejected';
+
+const TRANSITION_CONFIG: Record<TransitionKind, { title: string; description: string }> = {
+  in_review: { title: 'Move to In Review', description: 'Begin reviewing this dispute internally.' },
+  submitted: { title: 'Submit to Retailer', description: 'Mark this dispute as submitted to the retailer.' },
+  accepted: { title: 'Accept — Full Recovery', description: 'The retailer accepted the full disputed amount.' },
+  partial: { title: 'Partial Recovery', description: 'The retailer agreed to a partial recovery. Enter the recovered amount.' },
+  rejected: { title: 'Reject Dispute', description: 'The retailer rejected this dispute.' },
+};
 
 const STATUS_COLORS: Record<string, string> = {
   new: 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300',
@@ -56,6 +79,8 @@ const STATUS_COLORS: Record<string, string> = {
   partial: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
   rejected: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
 };
+
+const TERMINAL = new Set(['accepted', 'partial', 'rejected']);
 
 function statusLabel(s: string): string {
   return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -68,23 +93,93 @@ export default function DeductionDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [activeDisputeId, setActiveDisputeId] = useState<number | null>(null);
+  const [transitionKind, setTransitionKind] = useState<TransitionKind | null>(null);
+  const [dialogNotes, setDialogNotes] = useState('');
+  const [dialogAmount, setDialogAmount] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createNotes, setCreateNotes] = useState('');
+
+  const refetch = useCallback(() => {
     apiFetch<DeductionDetail>(`/api/deductions/${id}`)
       .then(setData)
       .catch((e) => setError(e.message));
   }, [id]);
 
-  function createDispute() {
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  const hasPriorResolved = (data?.disputes ?? []).some((d) => TERMINAL.has(d.status));
+
+  function handleCreateClick() {
+    if (hasPriorResolved) {
+      setCreateNotes('');
+      setCreateDialogOpen(true);
+    } else {
+      submitCreate('');
+    }
+  }
+
+  function submitCreate(notes: string) {
     if (!data) return;
     setCreating(true);
     apiFetch<any>(`/api/deductions/${data.id}/dispute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notes: '' }),
+      body: JSON.stringify({ notes }),
     })
-      .then(() => apiFetch<DeductionDetail>(`/api/deductions/${id}`))
-      .then(setData)
+      .then(() => { setCreateDialogOpen(false); refetch(); })
       .finally(() => setCreating(false));
+  }
+
+  function openTransition(disputeId: number, kind: TransitionKind, dispute: Dispute) {
+    setActiveDisputeId(disputeId);
+    setTransitionKind(kind);
+    setDialogNotes('');
+    if (kind === 'partial') {
+      setDialogAmount((dispute.amount_disputed_cents / 100).toFixed(2));
+    } else {
+      setDialogAmount('');
+    }
+    setDialogOpen(true);
+  }
+
+  function submitTransition() {
+    if (!activeDisputeId || !transitionKind) return;
+    const dispute = data?.disputes.find((d) => d.id === activeDisputeId);
+    if (!dispute) return;
+    setSubmitting(true);
+
+    const body: Record<string, any> = {
+      status: transitionKind,
+      notes: dialogNotes || undefined,
+    };
+
+    if (transitionKind === 'accepted') {
+      body.amount_recovered_cents = dispute.amount_disputed_cents;
+    } else if (transitionKind === 'partial') {
+      const dollars = parseFloat(dialogAmount);
+      if (isNaN(dollars) || dollars <= 0) {
+        setSubmitting(false);
+        return;
+      }
+      body.amount_recovered_cents = Math.round(dollars * 100);
+    }
+
+    apiFetch(`/api/disputes/${activeDisputeId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(() => {
+        setDialogOpen(false);
+        refetch();
+      })
+      .finally(() => setSubmitting(false));
   }
 
   if (error) {
@@ -106,6 +201,11 @@ export default function DeductionDetailPage() {
       </div>
     );
   }
+
+  const remaining = data.amount_remaining_cents ?? data.amount_cents ?? 0;
+  const hasOpenDispute = data.disputes.some((d) => !TERMINAL.has(d.status));
+  const fullyRecovered = remaining <= 0;
+  const canDisputeMore = !fullyRecovered && !hasOpenDispute;
 
   return (
     <div className="space-y-6">
@@ -153,6 +253,15 @@ export default function DeductionDetailPage() {
                 <dd className="font-mono text-lg font-semibold">{formatCents(data.amount_cents)}</dd>
               </div>
               <div>
+                <dt className="text-muted-foreground">Remaining</dt>
+                <dd className={`font-mono text-lg font-semibold ${fullyRecovered ? 'text-emerald-600' : ''}`}>
+                  {formatCents(remaining)}
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    of {formatCents(data.amount_cents)}
+                  </span>
+                </dd>
+              </div>
+              <div>
                 <dt className="text-muted-foreground">Date</dt>
                 <dd className="font-medium">{formatDate(data.deducted_at)}</dd>
               </div>
@@ -170,7 +279,7 @@ export default function DeductionDetailPage() {
                 </dd>
               </div>
               <div>
-                <dt className="text-muted-foreground">Original Status</dt>
+                <dt className="text-muted-foreground">Original Status (source data)</dt>
                 <dd>{data.original_status ?? '—'}</dd>
               </div>
               {data.original_retailer_name && data.original_retailer_name !== data.retailer_name && (
@@ -193,72 +302,146 @@ export default function DeductionDetailPage() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Dispute</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Dispute History</CardTitle>
+            {canDisputeMore && data.disputes.length > 0 && (
+              <Button size="sm" variant="outline" onClick={handleCreateClick} disabled={creating}>
+                <Plus className="size-3.5 mr-1" />
+                {creating ? 'Creating...' : 'Dispute Remaining'}
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
-            {data.dispute ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      STATUS_COLORS[data.dispute.status] ?? ''
-                    }`}
-                  >
-                    {statusLabel(data.dispute.status)}
-                  </span>
-                </div>
-                <dl className="space-y-3 text-sm">
-                  <div>
-                    <dt className="text-muted-foreground">Amount Disputed</dt>
-                    <dd className="font-mono font-medium">
-                      {formatCents(data.dispute.amount_disputed_cents)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Amount Recovered</dt>
-                    <dd className="font-mono font-medium">
-                      {formatCents(data.dispute.amount_recovered_cents)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Created</dt>
-                    <dd>{new Date(data.dispute.created_at).toLocaleDateString()}</dd>
-                  </div>
-                  {data.dispute.resolved_at && (
-                    <div>
-                      <dt className="text-muted-foreground">Resolved</dt>
-                      <dd>{new Date(data.dispute.resolved_at).toLocaleDateString()}</dd>
-                    </div>
-                  )}
-                  {data.dispute.notes && (
-                    <div>
-                      <dt className="text-muted-foreground">Notes</dt>
-                      <dd className="text-muted-foreground">{data.dispute.notes}</dd>
-                    </div>
-                  )}
-                </dl>
+            {fullyRecovered && data.disputes.length > 0 && (
+              <div className="mb-4 rounded-md bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300">
+                <CheckCircle2 className="mr-1.5 inline size-4" />
+                Fully recovered
+              </div>
+            )}
 
-                {data.activity_log.length > 0 && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium">Activity Log</h4>
-                      {data.activity_log.map((a) => (
-                        <div key={a.id} className="flex items-start gap-2 text-xs">
-                          <span className="shrink-0 text-muted-foreground">
-                            {new Date(a.created_at).toLocaleDateString()}
+            {data.disputes.length > 0 ? (
+              <div className="space-y-4">
+                {data.disputes.map((dispute, i) => {
+                  const isTerminal = TERMINAL.has(dispute.status);
+                  return (
+                    <div key={dispute.id}>
+                      {i > 0 && <Separator className="mb-4" />}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground font-medium">
+                            Attempt {data.disputes.length - i}
                           </span>
-                          <span>
-                            {a.from_status ? `${statusLabel(a.from_status)} → ` : ''}
-                            {statusLabel(a.to_status)}
-                            {a.note && <span className="text-muted-foreground"> — {a.note}</span>}
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              STATUS_COLORS[dispute.status] ?? ''
+                            }`}
+                          >
+                            {statusLabel(dispute.status)}
                           </span>
+                          {isTerminal && dispute.status === 'accepted' && (
+                            <CheckCircle2 className="size-4 text-emerald-600" />
+                          )}
+                          {isTerminal && dispute.status === 'rejected' && (
+                            <XCircle className="size-4 text-red-500" />
+                          )}
                         </div>
-                      ))}
+
+                        <dl className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">Disputed</dt>
+                            <dd className="font-mono font-medium">{formatCents(dispute.amount_disputed_cents)}</dd>
+                          </div>
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">Recovered</dt>
+                            <dd className="font-mono font-medium">{formatCents(dispute.amount_recovered_cents)}</dd>
+                          </div>
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">Created</dt>
+                            <dd>{formatTimestamp(dispute.created_at)}</dd>
+                          </div>
+                          {dispute.resolved_at && (
+                            <div className="flex justify-between">
+                              <dt className="text-muted-foreground">Resolved</dt>
+                              <dd>{formatTimestamp(dispute.resolved_at)}</dd>
+                            </div>
+                          )}
+                        </dl>
+
+                        {isTerminal && (
+                          <div className={`rounded-md p-2.5 text-xs ${
+                            dispute.status === 'accepted'
+                              ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300'
+                              : dispute.status === 'partial'
+                                ? 'bg-orange-50 text-orange-800 dark:bg-orange-950/20 dark:text-orange-300'
+                                : 'bg-red-50 text-red-800 dark:bg-red-950/20 dark:text-red-300'
+                          }`}>
+                            {dispute.status === 'accepted' && `Fully recovered ${formatCents(dispute.amount_recovered_cents)}`}
+                            {dispute.status === 'partial' && `Partially recovered ${formatCents(dispute.amount_recovered_cents)} of ${formatCents(dispute.amount_disputed_cents)}`}
+                            {dispute.status === 'rejected' && 'Rejected by retailer'}
+                          </div>
+                        )}
+
+                        {!isTerminal && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {dispute.status === 'new' && (
+                              <Button size="sm" onClick={() => openTransition(dispute.id, 'in_review', dispute)}>
+                                Move to In Review
+                              </Button>
+                            )}
+                            {dispute.status === 'in_review' && (
+                              <Button size="sm" onClick={() => openTransition(dispute.id, 'submitted', dispute)}>
+                                Submit to Retailer
+                              </Button>
+                            )}
+                            {dispute.status === 'submitted' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700"
+                                  onClick={() => openTransition(dispute.id, 'accepted', dispute)}
+                                >
+                                  Accept
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openTransition(dispute.id, 'partial', dispute)}
+                                >
+                                  Partial Recovery
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => openTransition(dispute.id, 'rejected', dispute)}
+                                >
+                                  Reject
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {dispute.activity_log.length > 0 && (
+                          <div className="space-y-1.5 pt-1">
+                            <h4 className="text-xs font-medium text-muted-foreground">Activity</h4>
+                            {dispute.activity_log.map((a) => (
+                              <div key={a.id} className="flex items-start gap-2 text-xs">
+                                <span className="shrink-0 text-muted-foreground">
+                                  {formatTimestamp(a.created_at)}
+                                </span>
+                                <span>
+                                  {a.from_status ? `${statusLabel(a.from_status)} → ` : ''}
+                                  {statusLabel(a.to_status)}
+                                  {a.note && <span className="text-muted-foreground"> — {a.note}</span>}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </>
-                )}
+                  );
+                })}
               </div>
             ) : (
               <div className="space-y-3 text-center">
@@ -268,7 +451,7 @@ export default function DeductionDetailPage() {
                     This deduction is typically disputable.
                   </p>
                 )}
-                <Button size="sm" onClick={createDispute} disabled={creating}>
+                <Button size="sm" onClick={handleCreateClick} disabled={creating}>
                   {creating ? 'Creating...' : 'Create Dispute'}
                 </Button>
               </div>
@@ -276,6 +459,97 @@ export default function DeductionDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {transitionKind && (
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{TRANSITION_CONFIG[transitionKind].title}</DialogTitle>
+              <DialogDescription>{TRANSITION_CONFIG[transitionKind].description}</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              {transitionKind === 'partial' && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    Recovery Amount ($) <span className="text-destructive">*</span>
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={dialogAmount}
+                    onChange={(e) => setDialogAmount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">
+                  Notes {transitionKind !== 'partial' && <span className="text-muted-foreground font-normal">(optional)</span>}
+                </label>
+                <Textarea
+                  value={dialogNotes}
+                  onChange={(e) => setDialogNotes(e.target.value)}
+                  placeholder="Add a note about this transition..."
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button
+                onClick={submitTransition}
+                disabled={submitting || (transitionKind === 'partial' && (!dialogAmount || parseFloat(dialogAmount) <= 0))}
+                className={
+                  transitionKind === 'accepted'
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700'
+                    : ''
+                }
+                variant={transitionKind === 'rejected' ? 'destructive' : 'default'}
+              >
+                {submitting ? 'Saving...' : 'Confirm'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dispute Remaining Balance</DialogTitle>
+            <DialogDescription>
+              This deduction has a prior resolved dispute. Explain why you're opening a new one.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              Notes <span className="text-destructive">*</span>
+            </label>
+            <Textarea
+              value={createNotes}
+              onChange={(e) => setCreateNotes(e.target.value)}
+              placeholder="Why are you re-disputing? (e.g. pursuing remaining balance, new evidence, retailer error)"
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={creating}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => submitCreate(createNotes)}
+              disabled={creating || !createNotes.trim()}
+            >
+              {creating ? 'Creating...' : 'Create Dispute'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

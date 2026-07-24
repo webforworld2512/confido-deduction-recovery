@@ -297,7 +297,6 @@ export default function DeductionList() {
               >
                 Amount{sortIndicator('amount')}
               </TableHead>
-              <TableHead>Status</TableHead>
               <TableHead>Dispute</TableHead>
               <TableHead className="w-10" />
             </TableRow>
@@ -306,7 +305,7 @@ export default function DeductionList() {
             {loading ? (
               Array.from({ length: 10 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 8 }).map((_, j) => (
+                  {Array.from({ length: 7 }).map((_, j) => (
                     <TableCell key={j}>
                       <div className="h-4 w-full animate-pulse rounded bg-muted" />
                     </TableCell>
@@ -315,7 +314,7 @@ export default function DeductionList() {
               ))
             ) : data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                   No deductions found.
                 </TableCell>
               </TableRow>
@@ -342,21 +341,6 @@ export default function DeductionList() {
                   </TableCell>
                   <TableCell className="text-right font-mono whitespace-nowrap">
                     {formatCents(d.amount_cents)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-muted-foreground">
-                        {d.original_status ?? '—'}
-                      </span>
-                      {d.has_data_issues === 1 && (
-                        <span
-                          title={d.data_issue_notes ?? 'Data quality issue'}
-                          className="inline-flex size-4 items-center justify-center rounded-full bg-amber-100 text-[10px] font-bold text-amber-600 dark:bg-amber-900/40 dark:text-amber-400"
-                        >
-                          !
-                        </span>
-                      )}
-                    </div>
                   </TableCell>
                   <TableCell>
                     {d.dispute_status ? (

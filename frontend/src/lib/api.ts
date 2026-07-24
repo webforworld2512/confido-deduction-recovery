@@ -20,3 +20,17 @@ export function formatDate(dateStr: string | null | undefined): string {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+export function formatTimestamp(ts: string | null | undefined): string {
+  if (!ts) return '—';
+  const d = new Date(ts.includes('T') ? ts : ts + 'Z');
+  if (isNaN(d.getTime())) return ts;
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(d);
+}

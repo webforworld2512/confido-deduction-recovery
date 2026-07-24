@@ -27,9 +27,9 @@ router.get('/api/deductions', (req, res) => {
     params.push(req.query.reason_code);
   }
   if (req.query.has_dispute === 'true') {
-    conditions.push('dis.id IS NOT NULL');
+    conditions.push('latest_dis.id IS NOT NULL');
   } else if (req.query.has_dispute === 'false') {
-    conditions.push('dis.id IS NULL');
+    conditions.push('latest_dis.id IS NULL');
   }
   if (req.query.typically_disputable === 'true') {
     conditions.push('dr.typically_disputable = 1');
@@ -43,10 +43,17 @@ router.get('/api/deductions', (req, res) => {
 
   const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
+  const latestDisputeJoin = `
+    LEFT JOIN disputes latest_dis ON latest_dis.deduction_id = d.id
+      AND latest_dis.id = (
+        SELECT id FROM disputes WHERE deduction_id = d.id ORDER BY created_at DESC LIMIT 1
+      )
+  `;
+
   const countRow = db.prepare(`
     SELECT COUNT(*) as total
     FROM deductions d
-    LEFT JOIN disputes dis ON dis.deduction_id = d.id
+    ${latestDisputeJoin}
     LEFT JOIN dispute_reasons dr ON dr.code = d.reason_code
     ${where}
   `).get(...params) as { total: number };
@@ -61,13 +68,13 @@ router.get('/api/deductions', (req, res) => {
       dr.label AS reason_label,
       dr.category AS reason_category,
       dr.typically_disputable,
-      dis.id AS dispute_id,
-      dis.status AS dispute_status
+      latest_dis.id AS dispute_id,
+      latest_dis.status AS dispute_status
     FROM deductions d
     LEFT JOIN companies c ON c.id = d.company_id
     LEFT JOIN retailers r ON r.id = d.retailer_id
     LEFT JOIN dispute_reasons dr ON dr.code = d.reason_code
-    LEFT JOIN disputes dis ON dis.deduction_id = d.id
+    ${latestDisputeJoin}
     ${where}
     ORDER BY ${sortBy} ${sortOrder}
     LIMIT ? OFFSET ?
@@ -97,27 +104,41 @@ router.get('/api/deductions/:id', (req, res) => {
     LEFT JOIN retailers r ON r.id = d.retailer_id
     LEFT JOIN dispute_reasons dr ON dr.code = d.reason_code
     WHERE d.id = ?
-  `).get(id);
+  `).get(id) as any;
 
   if (!deduction) {
     res.status(404).json({ error: 'Deduction not found' });
     return;
   }
 
-  const dispute = db.prepare(`
-    SELECT * FROM disputes WHERE deduction_id = ?
-  `).get(id);
+  const disputes = db.prepare(`
+    SELECT * FROM disputes WHERE deduction_id = ? ORDER BY created_at DESC
+  `).all(id) as any[];
 
-  let activity_log: any[] = [];
-  if (dispute) {
-    activity_log = db.prepare(`
+  const disputeIds = disputes.map((d: any) => d.id);
+  let activityRows: any[] = [];
+  if (disputeIds.length > 0) {
+    const placeholders = disputeIds.map(() => '?').join(',');
+    activityRows = db.prepare(`
       SELECT * FROM dispute_activity_log
-      WHERE dispute_id = ?
+      WHERE dispute_id IN (${placeholders})
       ORDER BY created_at ASC
-    `).all((dispute as any).id);
+    `).all(...disputeIds);
   }
 
-  res.json({ ...deduction as any, dispute: dispute ?? null, activity_log });
+  const activityByDispute = new Map<number, any[]>();
+  for (const row of activityRows) {
+    const list = activityByDispute.get(row.dispute_id) ?? [];
+    list.push(row);
+    activityByDispute.set(row.dispute_id, list);
+  }
+
+  const disputesWithLogs = disputes.map((d: any) => ({
+    ...d,
+    activity_log: activityByDispute.get(d.id) ?? [],
+  }));
+
+  res.json({ ...deduction, disputes: disputesWithLogs });
 });
 
 export default router;
