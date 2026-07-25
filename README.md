@@ -117,6 +117,21 @@ The raw export (1,007 records) was genuinely messy. `normalize.ts` handles it:
 
 **Company scoping is filter-based, not auth-based.** Given the assessment's scope, there's a company selector rather than a full permissions system — noted as a limitation below.
 
+## Design considerations for the analyst
+
+This tool is built for a deductions analyst — typically an AR/finance 
+background, Excel-fluent, working a time-sensitive queue rather than 
+exploring data. That shaped a few UI decisions:
+- Large dollar figures are abbreviated (e.g. "$50.8M") with the exact 
+  figure shown alongside, so totals are scannable but still verifiable
+- Recovery rate is the most visually prominent number on the dashboard, 
+  since it's typically the KPI an analyst is measured against
+- The dispute workflow only ever shows the single valid next action, 
+  mirroring how the analyst already thinks about a deduction's status, 
+  rather than exposing a free-form status picker
+
+This is a cheap addition that directly demonstrates the user-center
+
 ## Assumptions
 
 - `is_deleted = true` records should be excluded entirely, not just hidden
