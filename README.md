@@ -150,7 +150,7 @@ This is a cheap addition that directly demonstrates the user-center
 
 ## What I'd improve with more time
 
-1. **Triage/approval step** before a deduction becomes a dispute candidate, matching how Confido's own team appears to work
+1. **Triage/approval step** before a deduction becomes a dispute candidate
 2. **Analyst assignment** — deductions and disputes owned by specific people, not a shared pool
 3. **CSV/file import** with column mapping and a preview-before-commit step, so new data sources beyond this one export could be ingested safely
 4. **Bulk dispute actions** — select multiple eligible rows and file disputes in one action
