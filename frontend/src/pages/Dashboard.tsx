@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DollarSign, FileText, Scale, TrendingUp } from 'lucide-react';
 import { useCompany } from '#lib/CompanyContext';
-import { apiFetch, formatCents } from '#lib/api';
+import { apiFetch, formatCents, formatCentsAbbrev } from '#lib/api';
 import { toastError } from '#lib/toast';
 import { Card, CardContent, CardHeader, CardTitle } from '#components/ui/card';
 import { Skeleton } from '#components/ui/skeleton';
@@ -100,37 +100,44 @@ export default function Dashboard() {
     );
   }
 
+  const totalAbbrev = formatCentsAbbrev(data.total_deductions_amount);
+  const disputedAbbrev = formatCentsAbbrev(data.disputed_amount);
+  const recoveredAbbrev = formatCentsAbbrev(data.recovered_amount);
+  const undisputedAbbrev = formatCentsAbbrev(data.undisputed_disputable.amount);
+
   const cards = [
     {
       title: 'Total Deductions',
-      value: formatCents(data.total_deductions_amount),
+      value: totalAbbrev.abbrev,
+      valueFull: totalAbbrev.abbrev !== totalAbbrev.full ? totalAbbrev.full : null,
       sub: `${data.total_deductions_count} deductions`,
       icon: FileText,
-      border: 'border-t-slate-accent',
       iconColor: 'text-slate-accent',
     },
     {
       title: 'Disputed',
-      value: formatCents(data.disputed_amount),
+      value: disputedAbbrev.abbrev,
+      valueFull: disputedAbbrev.abbrev !== disputedAbbrev.full ? disputedAbbrev.full : null,
       sub: `${data.disputed_count} disputes`,
       icon: Scale,
-      border: 'border-t-status-new',
       iconColor: 'text-status-new',
     },
     {
       title: 'Recovered',
-      value: formatCents(data.recovered_amount),
-      sub: `${(data.recovery_rate * 100).toFixed(1)}% recovery rate`,
+      value: `${(data.recovery_rate * 100).toFixed(1)}%`,
+      valueFull: null,
+      sub: recoveredAbbrev.abbrev !== recoveredAbbrev.full
+        ? `${recoveredAbbrev.abbrev} recovered (${recoveredAbbrev.full})`
+        : `${recoveredAbbrev.full} recovered`,
       icon: DollarSign,
-      border: 'border-t-status-accepted',
       iconColor: 'text-status-accepted',
     },
     {
       title: 'Undisputed Disputable',
-      value: formatCents(data.undisputed_disputable.amount),
+      value: undisputedAbbrev.abbrev,
+      valueFull: undisputedAbbrev.abbrev !== undisputedAbbrev.full ? undisputedAbbrev.full : null,
       sub: `${data.undisputed_disputable.count} deductions`,
       icon: TrendingUp,
-      border: 'border-t-status-active',
       iconColor: 'text-status-active',
     },
   ];
@@ -141,13 +148,16 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((c) => (
-          <Card key={c.title} className={`border-t-[3px] ${c.border}`}>
+          <Card key={c.title}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">{c.title}</CardTitle>
               <c.icon className={`size-4 ${c.iconColor}`} />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold tabular-nums">{c.value}</div>
+              {c.valueFull && (
+                <p className="text-xs font-mono tabular-nums text-muted-foreground">{c.valueFull}</p>
+              )}
               <p className="text-xs text-muted-foreground">{c.sub}</p>
             </CardContent>
           </Card>
@@ -168,11 +178,12 @@ export default function Dashboard() {
                   const pct = data.total_deductions_amount > 0
                     ? (r.amount / data.total_deductions_amount) * 100
                     : 0;
+                  const rAbbrev = formatCentsAbbrev(r.amount);
                   return (
                     <div key={r.retailer} className="space-y-1">
                       <div className="flex items-center justify-between text-sm">
                         <span>{r.retailer}</span>
-                        <span className="font-mono tabular-nums text-muted-foreground">{formatCents(r.amount)}</span>
+                        <span className="font-mono tabular-nums text-muted-foreground" title={rAbbrev.full}>{rAbbrev.abbrev}</span>
                       </div>
                       <div className="h-2 rounded-full bg-muted">
                         <div
@@ -197,22 +208,25 @@ export default function Dashboard() {
               <p className="py-8 text-center text-sm text-muted-foreground">No reason data.</p>
             ) : (
               <div className="space-y-2">
-                {data.by_reason.map((r) => (
-                  <div key={r.code} className="flex items-center justify-between gap-4 text-sm">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className="truncate">{r.reason}</span>
-                      {r.typically_disputable === 1 && (
-                        <span className="shrink-0 rounded border border-slate-accent/40 px-1.5 py-0.5 text-[10px] font-medium text-slate-accent-fg">
-                          Disputable
-                        </span>
-                      )}
-                    </span>
-                    <span className="flex shrink-0 items-center gap-3">
-                      <span className="tabular-nums text-muted-foreground">{r.count}</span>
-                      <span className="text-right font-mono tabular-nums whitespace-nowrap">{formatCents(r.amount)}</span>
-                    </span>
-                  </div>
-                ))}
+                {data.by_reason.map((r) => {
+                  const rAbbrev = formatCentsAbbrev(r.amount);
+                  return (
+                    <div key={r.code} className="flex items-center justify-between gap-4 text-sm">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="truncate">{r.reason}</span>
+                        {r.typically_disputable === 1 && (
+                          <span className="shrink-0 rounded border border-slate-accent/40 px-1.5 py-0.5 text-[10px] font-medium text-slate-accent-fg">
+                            Disputable
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-3">
+                        <span className="tabular-nums text-muted-foreground">{r.count}</span>
+                        <span className="text-right font-mono tabular-nums whitespace-nowrap" title={rAbbrev.full}>{rAbbrev.abbrev}</span>
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>

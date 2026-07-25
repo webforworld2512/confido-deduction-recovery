@@ -15,6 +15,19 @@ export function formatCents(cents: number | null | undefined): string {
   }).format(cents / 100);
 }
 
+export function formatCentsAbbrev(cents: number | null | undefined): { abbrev: string; full: string } {
+  const full = formatCents(cents);
+  if (cents == null) return { abbrev: full, full };
+  const dollars = Math.abs(cents) / 100;
+  if (dollars >= 1_000_000) {
+    return { abbrev: `$${(dollars / 1_000_000).toFixed(1)}M`, full };
+  }
+  if (dollars >= 100_000) {
+    return { abbrev: `$${(dollars / 1_000).toFixed(1)}K`, full };
+  }
+  return { abbrev: full, full };
+}
+
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   const d = new Date(dateStr + 'T00:00:00');

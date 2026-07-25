@@ -82,6 +82,11 @@ router.patch('/api/disputes/:id', (req, res) => {
     return;
   }
 
+  if (status === 'partial' && (amount_recovered_cents == null || amount_recovered_cents <= 0)) {
+    res.status(400).json({ error: 'amount_recovered_cents is required and must be > 0 for partial recovery' });
+    return;
+  }
+
   const now = new Date().toISOString();
   const resolvedAt = TERMINAL_STATUSES.has(status) ? now : null;
 
