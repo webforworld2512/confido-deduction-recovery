@@ -23,7 +23,7 @@ export default function Layout() {
       {/* Top navbar */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-6">
         <span className="text-lg font-semibold tracking-tight text-slate-accent">
-          Confido
+          Dispute Desk
           <span className="ml-0.5 text-slate-accent/40">.</span>
         </span>
         <Select
