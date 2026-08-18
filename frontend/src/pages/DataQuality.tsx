@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCompany } from '#lib/CompanyContext';
 import { apiFetch, formatCents, formatDate } from '#lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '#components/ui/card';
+import { Card, CardContent } from '#components/ui/card';
 import { Button } from '#components/ui/button';
 import { Skeleton } from '#components/ui/skeleton';
 import {

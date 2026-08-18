@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { DollarSign, FileText, Scale, TrendingUp } from 'lucide-react';
 import { useCompany } from '#lib/CompanyContext';
 import { apiFetch, formatCents, formatCentsAbbrev } from '#lib/api';
@@ -25,7 +24,6 @@ interface DashboardData {
 
 export default function Dashboard() {
   const { selectedCompanyId } = useCompany();
-  const navigate = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
